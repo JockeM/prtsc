@@ -1,3 +1,7 @@
+mod screenshot;
+
 fn main() {
-    println!("Hello, world!");
+    let s =  screenshot::get_screenshot(0).unwrap();
+    
+    println!("{}", s.height());
 }
