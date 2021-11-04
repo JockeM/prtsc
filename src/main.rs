@@ -2,6 +2,7 @@ use arboard::Clipboard;
 use image::{DynamicImage, ImageBuffer};
 use reqwest::Client;
 use std::convert::TryInto;
+use std::env;
 
 fn get_image_buffer(clipboard: &mut Clipboard) -> Option<Vec<u8>> {
     let image = match clipboard.get_image() {
@@ -10,8 +11,6 @@ fn get_image_buffer(clipboard: &mut Clipboard) -> Option<Vec<u8>> {
             return None;
         }
     };
-
-    eprintln!("getting {}×{} image", image.width, image.height);
 
     let image = DynamicImage::ImageRgba8(ImageBuffer::from_raw(
         image.width.try_into().unwrap(),
@@ -31,7 +30,10 @@ async fn upload_image_buffer(buffer: Vec<u8>) -> Result<String, Box<dyn std::err
     let img_string = format!("\"{}\"", base64::encode(&buffer));
     let params = [("image", img_string)];
 
-    let client_id = "123123";
+    let args: Vec<String> = env::args().collect();
+
+    let client_id = args.get(1).expect("You need to provide a imgur client_id");
+
     let client = Client::new();
     let response = client
         .post("https://api.imgur.com/3/image")
@@ -42,18 +44,25 @@ async fn upload_image_buffer(buffer: Vec<u8>) -> Result<String, Box<dyn std::err
         .json::<serde_json::Value>()
         .await?;
 
-    match response["data"]["link"].as_str() {
-        Some(str) => Ok(str.to_string()),
-        None => panic!("failed to fetch link from json"),
+    if response["success"].as_bool().unwrap_or(false) {
+        let link = response["data"]["link"].as_str().unwrap();
+
+        println!("uploaded: {}", link);
+
+        Ok(link.into())
+    } else {
+        Err("Failed to upload image".into())
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut clipboard = Clipboard::new().unwrap();
-    let buffer = match get_image_buffer(&mut clipboard) {
-        Some(buffer) => buffer,
-        None => return Ok(()),
+    let buffer = if let Some(buffer) = get_image_buffer(&mut clipboard) {
+        buffer
+    } else {
+        println!("No image found on clipboard");
+        return Ok(());
     };
 
     let link = upload_image_buffer(buffer).await?;
